@@ -18,308 +18,340 @@
     18                                  section .text
     19                                  global _start                  ; predefined entry point name for ld
     20                                  ;================================Code======================================
-    21 00000000 B801000000              _start:         mov rax, 0x01      ; write64 (rdi, rsi, rdx) ... r10, r8, r9
-    22 00000005 BF01000000                              mov rdi, 1         ; stdout
-    23 0000000A 48BE-                                   mov rsi, Msg
-    23 0000000C [5204000000000000] 
-    24 00000014 BA05000000                              mov rdx, MsgLen    ; strlen (Msg)
-    25 00000019 0F05                                    syscall
-    26                                  
-    27 0000001B 4831C0                                  xor rax, rax
-    28 0000001E 48BF-                                   mov rdi, Format
-    28 00000020 [0000000000000000] 
-    29 00000028 48C7C600FFFFFF                          mov rsi, -256
-    30 0000002F BA39300000                              mov rdx, 12345
-    31 00000034 B94B000000                              mov rcx, 'K'
-    32 00000039 41B800000000                            mov r8, 0x00
-    33 0000003F 41B90B000000                            mov r9, 0x0B
-    34 00000045 6A0A                                    push 0x0A
-    35 00000047 E80E000000                              call my_printf
-    36 0000004C 4883C408                                add rsp, 0x08
-    37                                  
-    38                                                  ; mov rdi, Format2
-    39                                                  ; mov rsi, -253
-    40                                                  ; mov rdx, -112233
-    41                                                  ; mov rcx, 'r'
-    42                                                  ; call my_printf
-    43                                  
-    44                                                  
-    45                                                  
-    46 00000050 B83C000000                              mov rax, 0x3C      ; exit64 (rdi)
-    47 00000055 4831FF                                  xor rdi, rdi
-    48 00000058 0F05                                    syscall
-    49                                  ;==========================================================================
-    50                                  
-    51                                  ;=============================My_Printf====================================
-    52                                  my_printf:
-    53 0000005A 4151                                    push r9
-    54 0000005C 4150                                    push r8
-    55 0000005E 51                                      push rcx 
-    56 0000005F 52                                      push rdx
-    57 00000060 56                                      push rsi
-    58 00000061 50                                      push rax
-    59 00000062 55                                      push rbp
-    60 00000063 4889E5                                  mov rbp, rsp
-    61                                  
-    62 00000066 41BA10000000                            mov r10, PrintArgsPos ; start_pos of arg counter
-    63 0000006C 4889FE                                  mov rsi, rdi ; format str
-    64 0000006F 48BF-                                   mov rdi, Print_Buf ;printbuf pos
-    64 00000071 [2A00000000000000] 
-    65                                  
-    66 00000079 AC                      .lp:            lodsb ;[rsi] -> al
-    67 0000007A 3C00                                    cmp al, 0x00
-    68 0000007C 7407                                    je .print_buf
-    69 0000007E 3C25                                    cmp al, '%'
-    70                                  
-    71 00000080 742B                                    je .spec
-    72 00000082 AA                      .back:          stosb ; al -> [rdi]
-    73 00000083 EBF4                    .next_parse:    jmp .lp
-    74                                  
-    75                                  .print_buf:     
-    76 00000085 4889F9                                  mov rcx, rdi
-    77 00000088 4881E9[2A000000]                        sub rcx, Print_Buf
-    78                                                  PRINT_STR Print_Buf, rcx
-    11 0000008F B801000000          <1>  mov rax, 0x01
-    12 00000094 BF01000000          <1>  mov rdi, 1
-    13 00000099 48BE-               <1>  mov rsi, %1
-    13 0000009B [2A00000000000000]  <1>
-    14 000000A3 4889CA              <1>  mov rdx, %2
-    15 000000A6 0F05                <1>  syscall
-    79 000000A8 E936010000                              jmp .exit
-    80                                  
-    81                                  .spec:
-    82 000000AD AC                                      lodsb ;al - specifier
-    83 000000AE 3C25                                    cmp al, '%'
-    84 000000B0 74D0                                    je .back
-    85 000000B2 480FB6C0                                movzx rax, al
-    86 000000B6 2C62                                    sub al, BaseElem
-    87 000000B8 48C1E003                                shl rax, 3 ;al * 8 byte
-    88 000000BC 4889C2                                  mov rdx, rax
-    89                                  
-    90 000000BF 4A8B441500                              mov rax, [rbp + r10] ;argument value
-    91 000000C4 4983C208                                add r10, 0x08 ;next elem
-    92 000000C8 4983FA38                                cmp r10, IpStackPos
-    93 000000CC 41BB40000000                            mov r11, (IpStackPos + 0x08) ;skip ip
-    94 000000D2 4D0F44D3                                cmove r10, r11
+    21                                  _start:  
+    22 00000000 4831C0                                  xor rax, rax ;"Is: %% %d %d %c %x %o %s "
+    23 00000003 48BF-                                   mov rdi, Format
+    23 00000005 [0000000000000000] 
+    24 0000000D 48C7C600FFFFFF                          mov rsi, -256 ;first
+    25 00000014 BA39300000                              mov rdx, 12345 ;second
+    26 00000019 B94B000000                              mov rcx, 'K' ;third
+    27 0000001E 41B800000000                            mov r8, 0x00 ;fourth
+    28 00000024 41B90B000000                            mov r9, 0x0B ;fifth
+    29                                                  ; push 0x0A     
+    30 0000002A 68[54040000]                            push Msg ; sixth
+    31 0000002F E80E000000                              call my_printf
+    32 00000034 4883C408                                add rsp, 0x08
+    33                                  
+    34                                                  ; mov rdi, Format2
+    35                                                  ; mov rsi, StrMsg
+    36                                                  ; ; mov rdx, -112233
+    37                                                  ; ; mov rcx, 'r'
+    38                                                  ; call my_printf
+    39                                  
+    40                                                  
+    41                                                  
+    42 00000038 B83C000000                              mov rax, 0x3C      ; exit64 (rdi)
+    43 0000003D 4831FF                                  xor rdi, rdi
+    44 00000040 0F05                                    syscall
+    45                                  ;==========================================================================
+    46                                  
+    47                                  ;=============================My_Printf====================================
+    48                                  my_printf:
+    49 00000042 4151                                    push r9
+    50 00000044 4150                                    push r8
+    51 00000046 51                                      push rcx 
+    52 00000047 52                                      push rdx
+    53 00000048 56                                      push rsi
+    54                                  
+    55 00000049 50                                      push rax
+    56 0000004A 55                                      push rbp
+    57 0000004B 4889E5                                  mov rbp, rsp
+    58                                  
+    59 0000004E 41BA10000000                            mov r10, PrintArgsPos ; start_pos of arg counter
+    60 00000054 4889FE                                  mov rsi, rdi ; format str
+    61 00000057 48BF-                                   mov rdi, Print_Buf ;printbuf pos
+    61 00000059 [2B00000000000000] 
+    62                                  
+    63 00000061 AC                      .lp:            lodsb ;[rsi] -> al
+    64 00000062 3C00                                    cmp al, 0x00
+    65 00000064 7407                                    je .print_buf
+    66 00000066 3C25                                    cmp al, '%'
+    67                                  
+    68 00000068 742B                                    je .spec
+    69 0000006A AA                      .back:          stosb ; al -> [rdi]
+    70 0000006B EBF4                    .next_parse:    jmp .lp
+    71                                  
+    72                                  .print_buf:     
+    73 0000006D 4889F9                                  mov rcx, rdi
+    74 00000070 4881E9[2B000000]                        sub rcx, Print_Buf
+    75                                                  PRINT_STR Print_Buf, rcx
+    11 00000077 B801000000          <1>  mov rax, 0x01
+    12 0000007C BF01000000          <1>  mov rdi, 1
+    13 00000081 48BE-               <1>  mov rsi, %1
+    13 00000083 [2B00000000000000]  <1>
+    14 0000008B 4889CA              <1>  mov rdx, %2
+    15 0000008E 0F05                <1>  syscall
+    76 00000090 E94F010000                              jmp .exit
+    77                                  
+    78                                  .spec:
+    79 00000095 AC                                      lodsb ;al - specifier
+    80 00000096 3C25                                    cmp al, '%'
+    81 00000098 74D0                                    je .back
+    82 0000009A 480FB6C0                                movzx rax, al
+    83 0000009E 2C62                                    sub al, BaseElem
+    84 000000A0 48C1E003                                shl rax, 3 ;al * 8 byte
+    85 000000A4 4889C2                                  mov rdx, rax
+    86                                  
+    87 000000A7 4983FA38                                cmp r10, IpStackPos
+    88 000000AB 41BB40000000                            mov r11, (IpStackPos + 0x08) ;skip ip
+    89 000000B1 4D0F44D3                                cmove r10, r11 ;rebuild!!
+    90                                  
+    91 000000B5 4A8B441500                              mov rax, [rbp + r10] ;argument value
+    92 000000BA 4983C208                                add r10, 0x08 ;next elem
+    93                                  
+    94 000000BE FFA2[C4000000]                          jmp [.switch_table + rdx]
     95                                  
-    96 000000D6 FFA2[DC000000]                          jmp [.switch_table + rdx]
-    97                                  
-    98                                  .switch_table:
-    99 000000DC [9401000000000000]                      dq .case_b  ;98     0
-   100 000000E4 [A001000000000000]                      dq .case_c  ;99     1
-   101 000000EC [A601000000000000]                      dq .case_d  ;100    2
-   102 000000F4 [C801000000000000]-                     times 10 dq .default
-   102 000000F4 <rep Ah>           
-   103 00000144 [B001000000000000]                      dq .case_o  ;111    13
-   104 0000014C [BC01000000000000]                      dq .case_p  ;112    14
-   105 00000154 [C801000000000000]                      dq .default
-   106 0000015C [BC01000000000000]                      dq .case_s  ;114    16
-   107 00000164 [C801000000000000]-                     times 5 dq .default 
-   107 00000164 <rep 5h>           
-   108 0000018C [BC01000000000000]                      dq .case_x  ;120    22
-   109                                  
-   110                                  .case_b:
-   111 00000194 41B801000000                            mov r8, 0x01 ;bin mask
-   112 0000019A B101                                    mov cl, 0x01 ;bin offset
-   113 0000019C B262                                    mov dl, 'b'
-   114 0000019E EB2D                                    jmp .numsyst_conv
+    96                                  .switch_table:
+    97 000000C4 [AA01000000000000]                      dq .case_b  ;98     0
+    98 000000CC [7C01000000000000]                      dq .case_c  ;99     1
+    99 000000D4 [8201000000000000]                      dq .case_d  ;100    2
+   100 000000DC [A501000000000000]-                     times 10 dq .default
+   100 000000DC <rep Ah>           
+   101 0000012C [B601000000000000]                      dq .case_o  ;111    13
+   102 00000134 [8C01000000000000]                      dq .case_p  ;112    14
+   103 0000013C [A501000000000000]-                     times 2 dq .default
+   103 0000013C <rep 2h>           
+   104 0000014C [8C01000000000000]                      dq .case_s  ;115    16
+   105 00000154 [A501000000000000]-                     times 4 dq .default 
+   105 00000154 <rep 4h>           
+   106 00000174 [C201000000000000]                      dq .case_x  ;120    22
+   107                                  
+   108                                  .case_c:             
+   109 0000017C AA                                      stosb 
+   110 0000017D E9E9FEFFFF                              jmp .next_parse     
+   111                                  
+   112                                  .case_d:
+   113 00000182 E8B6000000                              call itoa ;put decimal value string in print_buf
+   114 00000187 E9DFFEFFFF                              jmp .next_parse
    115                                  
-   116                                  .case_c:             
-   117 000001A0 AA                                      stosb 
-   118 000001A1 E9DDFEFFFF                              jmp .next_parse     
-   119                                  
-   120                                  .case_d:
-   121 000001A6 E891000000                              call itoa
-   122 000001AB E9D3FEFFFF                              jmp .next_parse
-   123                                  
-   124                                  
-   125                                  .case_o:        
-   126 000001B0 41B807000000                            mov r8, 0x07 ;octo mask
-   127 000001B6 B103                                    mov cl, 0x03 ;octo offset
-   128 000001B8 B26F                                    mov dl, 'o'
-   129 000001BA EB11                                    jmp .numsyst_conv
-   130                                  
-   131                                  .case_p:
-   132                                  
-   133                                  .case_s:
+   116                                  
+   117                                  .case_p:
+   118                                  
+   119                                  .case_s:        
+   120 0000018C 56                                      push rsi ;save format_str ptr
+   121 0000018D 57                                      push rdi ;save print_buf addr
+   122                                  
+   123 0000018E 4889C7                                  mov rdi, rax ;rdi = string_ptr
+   124 00000191 E8F4000000                              call my_strlen ;rax - len of string arg
+   125                                                  
+   126 00000196 4889C1                                  mov rcx, rax ;len to rcx
+   127 00000199 4889FE                                  mov rsi, rdi ;rsi = string_ptr
+   128                                  
+   129 0000019C 5F                                      pop rdi ;print_buf
+   130 0000019D F3A4                                    rep movsb ;cpy len [rsi] -> [rdi]
+   131                                  
+   132 0000019F 5E                                      pop rsi ;ret format str ptr
+   133 000001A0 E9C6FEFFFF                              jmp .next_parse
    134                                  
-   135                                  .case_x:        
-   136 000001BC 41B80F000000                            mov r8, 0x0F ;hex mask
-   137 000001C2 B104                                    mov cl, 0x04 ;hex offset
-   138 000001C4 B278                                    mov dl, 'x'
-   139 000001C6 EB05                                    jmp .numsyst_conv
-   140                                  
-   141                                  .default:
-   142 000001C8 E9B6FEFFFF                              jmp .next_parse
+   135                                  .default:
+   136 000001A5 E9C1FEFFFF                              jmp .next_parse
+   137                                  
+   138                                  .case_b:
+   139 000001AA 41B801000000                            mov r8, 0x01 ;bin mask
+   140 000001B0 B101                                    mov cl, 0x01 ;bin offset
+   141 000001B2 B262                                    mov dl, 'b'
+   142 000001B4 EB18                                    jmp .numsyst_conv
    143                                  
-   144                                  .numsyst_conv:
-   145 000001CD 4989C1                                  mov r9, rax ;save arg
-   146 000001D0 B030                                    mov al, '0'
-   147 000001D2 AA                                      stosb
-   148 000001D3 88D0                                    mov al, dl
-   149 000001D5 AA                                      stosb
-   150 000001D6 4C89C8                                  mov rax, r9
-   151 000001D9 E80F000000                              call num_to_str
-   152 000001DE E9A0FEFFFF                              jmp .next_parse
-   153                                  
-   154                                  
-   155 000001E3 5D                      .exit:          pop rbp
-   156 000001E4 58                                      pop rax 
-   157 000001E5 5E                                      pop rsi 
-   158 000001E6 5A                                      pop rdx
-   159 000001E7 59                                      pop rcx
-   160 000001E8 4158                                    pop r8
-   161 000001EA 4159                                    pop r9
-   162                                  
-   163 000001EC C3                                      ret
-   164                                  ;==========================================================================
-   165                                  ;Entry:         rdi - format str addr
-   166                                  ;               rsi - first spec arg
-   167                                  ;               rdx - second
-   168                                  ;               rcx - third
-   169                                  ;               r8  - fourth
-   170                                  ;               r9  - fifth
-   171                                  ;               others in a stack
-   172                                  ;               rax - count float args xmm0 - xmm7
-   173                                  ;Destroyed:     r10
-   174                                  ;Expected:
-   175                                  ;Comment:       r10 - current parsing argument
-   176                                  ;ToDo:
-   177                                  ;==========================================================================
-   178                                  
-   179                                  ;=============================Print_Str====================================
-   180                                  ;==========================================================================
-   181                                  ;Entry:  
-   182                                  ;Destroyed:
-   183                                  ;Expected:
-   184                                  ;Comment:
-   185                                  ;ToDo:
-   186                                  ;==========================================================================
-   187                                  
-   188                                  ;===================================num_to_str=============================
-   189                                  num_to_str:
-   190 000001ED 50                                      push rax 
-   191 000001EE 56                                      push rsi
-   192                                  
-   193 000001EF 4889C2                                  mov rdx, rax ;save rax
-   194 000001F2 4989F9                                  mov r9, rdi ;save print_buf pos in r9
-   195 000001F5 48BF-                                   mov rdi, Temp_Buf
-   195 000001F7 [1204000000000000] 
-   196                                  
-   197                                  .next_digit: 
-   198 000001FF 4889D0                                  mov rax, rdx ;save in new rax
-   199 00000202 4C21C0                                  and rax, r8 ;mask with numsyst base
-   200                                  
-   201 00000205 4883F80A                                cmp rax, 0x0A ;is letter digit
-   202 00000209 730F                                    jae .get_letter
-   203 0000020B 4883C030                                add rax, '0' ;get digit
-   204 0000020F AA                      .back:          stosb ;temp_buf
-   205                                  
-   206 00000210 48D3EA                                  shr rdx, cl ;next digit
-   207                                  
-   208 00000213 4885D2                                  test rdx, rdx 
-   209 00000216 7408                                    jz .exit ;don't check insign zeros
+   144                                  .case_o:        
+   145 000001B6 41B807000000                            mov r8, 0x07 ;octo mask
+   146 000001BC B103                                    mov cl, 0x03 ;octo offset
+   147 000001BE B26F                                    mov dl, 'o'
+   148 000001C0 EB0C                                    jmp .numsyst_conv
+   149                                  
+   150                                  .case_x:        
+   151 000001C2 41B80F000000                            mov r8, 0x0F ;hex mask
+   152 000001C8 B104                                    mov cl, 0x04 ;hex offset
+   153 000001CA B278                                    mov dl, 'x'
+   154 000001CC EB00                                    jmp .numsyst_conv
+   155                                  
+   156                                  .numsyst_conv:
+   157 000001CE 4989C1                                  mov r9, rax ;save arg
+   158 000001D1 B030                                    mov al, '0'
+   159 000001D3 AA                                      stosb
+   160 000001D4 88D0                                    mov al, dl
+   161 000001D6 AA                                      stosb
+   162 000001D7 4C89C8                                  mov rax, r9
+   163 000001DA E80F000000                              call num_to_str
+   164 000001DF E987FEFFFF                              jmp .next_parse
+   165                                  
+   166                                  
+   167 000001E4 5D                      .exit:          pop rbp
+   168 000001E5 58                                      pop rax 
+   169 000001E6 5E                                      pop rsi 
+   170 000001E7 5A                                      pop rdx
+   171 000001E8 59                                      pop rcx
+   172 000001E9 4158                                    pop r8
+   173 000001EB 4159                                    pop r9
+   174                                  
+   175 000001ED C3                                      ret
+   176                                  ;==========================================================================
+   177                                  ;Entry:         rdi - format str addr
+   178                                  ;               rsi - first spec arg
+   179                                  ;               rdx - second
+   180                                  ;               rcx - third
+   181                                  ;               r8  - fourth
+   182                                  ;               r9  - fifth
+   183                                  ;               others in a stack
+   184                                  ;               rax - count float args xmm0 - xmm7
+   185                                  ;Destroyed:     r10
+   186                                  ;Expected:
+   187                                  ;Comment:       r10 - current parsing argument
+   188                                  ;ToDo:
+   189                                  ;==========================================================================
+   190                                  
+   191                                  ;===================================num_to_str=============================
+   192                                  num_to_str:
+   193 000001EE 50                                      push rax 
+   194 000001EF 56                                      push rsi
+   195                                  
+   196 000001F0 4889C2                                  mov rdx, rax ;save rax
+   197 000001F3 4989F9                                  mov r9, rdi ;save print_buf pos in r9
+   198 000001F6 48BF-                                   mov rdi, Temp_Buf
+   198 000001F8 [1304000000000000] 
+   199                                  
+   200                                  .next_digit: 
+   201 00000200 4889D0                                  mov rax, rdx ;save in new rax
+   202 00000203 4C21C0                                  and rax, r8 ;mask with numsyst base
+   203                                  
+   204 00000206 4883F80A                                cmp rax, 0x0A ;is letter digit
+   205 0000020A 730F                                    jae .get_letter
+   206 0000020C 4883C030                                add rax, '0' ;get digit
+   207 00000210 AA                      .back:          stosb ;temp_buf
+   208                                  
+   209 00000211 48D3EA                                  shr rdx, cl ;next digit
    210                                  
-   211 00000218 EBE5                                    jmp .next_digit
-   212                                  
-   213 0000021A 4883C037                .get_letter:    add rax, ('A' - 0x0A) ;10-15 to A-F
-   214 0000021E EBEF                                    jmp .back
+   211 00000214 4885D2                                  test rdx, rdx 
+   212 00000217 7408                                    jz .exit ;don't check insign zeros
+   213                                  
+   214 00000219 EBE5                                    jmp .next_digit
    215                                  
-   216                                  .exit:          
-   217 00000220 4889FE                                  mov rsi, rdi ;cur Temp_Buf pos
-   218 00000223 4C89CF                                  mov rdi, r9 ;return print_buf pos
-   219                                  
-   220 00000226 4889F1                                  mov rcx, rsi
-   221 00000229 4881E9[12040000]                        sub rcx, Temp_Buf ; get_len
-   222 00000230 48FFCE                                  dec rsi
-   223                                  
-   224 00000233 FD                      .lp:            std
-   225 00000234 AC                                      lodsb
-   226 00000235 FC                                      cld
-   227 00000236 AA                                      stosb
-   228 00000237 E2FA                                    loop .lp 
-   229                                  
-   230 00000239 5E                                      pop rsi
-   231 0000023A 58                                      pop rax
+   216 0000021B 4883C037                .get_letter:    add rax, ('A' - 0x0A) ;10-15 to A-F
+   217 0000021F EBEF                                    jmp .back
+   218                                  
+   219                                  .exit:          
+   220 00000221 4889FE                                  mov rsi, rdi ;cur Temp_Buf pos
+   221 00000224 4C89CF                                  mov rdi, r9 ;return print_buf pos
+   222                                  
+   223 00000227 4889F1                                  mov rcx, rsi
+   224 0000022A 4881E9[13040000]                        sub rcx, Temp_Buf ; get_len
+   225 00000231 48FFCE                                  dec rsi
+   226                                  
+   227 00000234 FD                      .lp:            std
+   228 00000235 AC                                      lodsb
+   229 00000236 FC                                      cld
+   230 00000237 AA                                      stosb
+   231 00000238 E2FA                                    loop .lp 
    232                                  
-   233 0000023B C3                                      ret
-   234                                  ;===================================num_to_str=============================
-   235                                  ;Entry: rax - arg, 
-   236                                  ;       r8 - numsyst base (that's degree of 2 and also a mask)
-   237                                  ;       cl - numsyst offset (in degree of 2 positions)
-   238                                  ;       rdi - printf_buf pos
-   239                                  ;Exit:  
-   240                                  ;Expected:
-   241                                  ;Destroyed: rdx, r9, rcx
-   242                                  ;Comment: convert digit to numsystem str
-   243                                  ;ToDo:
-   244                                  ;==========================================================================
-   245                                  
-   246                                  ;===================================Itoa===================================
-   247                                  itoa:           
-   248 0000023C 50                                      push rax 
-   249 0000023D 56                                      push rsi
-   250                                  
-   251 0000023E BB0A000000                              mov rbx, 10 ;decimal
-   252 00000243 48BE-                                   mov rsi, Temp_Buf
-   252 00000245 [1204000000000000] 
+   233 0000023A 5E                                      pop rsi
+   234 0000023B 58                                      pop rax
+   235                                  
+   236 0000023C C3                                      ret
+   237                                  ;===================================num_to_str=============================
+   238                                  ;Entry: rax - arg, 
+   239                                  ;       r8 - numsyst base (that's degree of 2 and also a mask)
+   240                                  ;       cl - numsyst offset (in degree of 2 positions)
+   241                                  ;       rdi - printf_buf pos
+   242                                  ;Exit:  rdi - buf pos
+   243                                  ;Expected:
+   244                                  ;Destroyed: rdx, r9, rcx
+   245                                  ;Comment: convert digit to numsystem str
+   246                                  ;ToDo:
+   247                                  ;==========================================================================
+   248                                  
+   249                                  ;===================================Itoa===================================
+   250                                  itoa:           
+   251 0000023D 50                                      push rax 
+   252 0000023E 56                                      push rsi
    253                                  
-   254 0000024D 4883F800                                cmp rax, 0x00 ;set SF
-   255 00000251 790D                                    jns .next_digit
+   254 0000023F BB0A000000                              mov rbx, 10 ;decimal
+   255 00000244 48BE-                                   mov rsi, Temp_Buf
+   255 00000246 [1304000000000000] 
    256                                  
-   257 00000253 B22D                                    mov dl, '-'
-   258 00000255 8817                                    mov [rdi], dl ; - to print_buf
-   259 00000257 48FFC7                                  inc rdi
-   260 0000025A 48F7D0                                  not rax
-   261 0000025D 48FFC0                                  inc rax
-   262                                  
-   263 00000260 4831D2                  .next_digit:    xor rdx, rdx
-   264 00000263 48F7F3                                  div rbx ;rax /= 10 rdx - left
-   265 00000266 80C230                                  add dl, '0'
-   266 00000269 8816                                    mov [rsi], dl
-   267 0000026B 48FFC6                                  inc rsi
-   268                                  
-   269 0000026E 4885C0                                  test rax, rax
-   270 00000271 75ED                                    jnz .next_digit
+   257 0000024E 4883F800                                cmp rax, 0x00 ;set SF
+   258 00000252 790D                                    jns .next_digit
+   259                                  
+   260 00000254 B22D                                    mov dl, '-'
+   261 00000256 8817                                    mov [rdi], dl ; - to print_buf
+   262 00000258 48FFC7                                  inc rdi
+   263 0000025B 48F7D0                                  not rax
+   264 0000025E 48FFC0                                  inc rax
+   265                                  
+   266 00000261 4831D2                  .next_digit:    xor rdx, rdx
+   267 00000264 48F7F3                                  div rbx ;rax /= 10 rdx - left
+   268 00000267 80C230                                  add dl, '0'
+   269 0000026A 8816                                    mov [rsi], dl
+   270 0000026C 48FFC6                                  inc rsi
    271                                  
-   272 00000273 4889F1                                  mov rcx, rsi
-   273 00000276 4881E9[12040000]                        sub rcx, Temp_Buf ; get_len
-   274 0000027D 48FFCE                                  dec rsi
-   275                                                  
-   276 00000280 FD                      .lp:            std
-   277 00000281 AC                                      lodsb
-   278 00000282 FC                                      cld
-   279 00000283 AA                                      stosb
-   280 00000284 E2FA                                    loop .lp          
-   281                                  
-   282 00000286 5E                      .exit:          pop rsi 
-   283 00000287 58                                      pop rax
-   284 00000288 C3                                      ret
-   285                                  ;===================================Itoa===================================
-   286                                  ;Entry: rax - value
-   287                                  ;       rsi - format str pos, 
-   288                                  ;       rdi - print_buf pos
-   289                                  ;Exit:  rdi - cur print_buf pos
-   290                                  ;Expected:
-   291                                  ;Destroyed: rbx, rdx, rcx
-   292                                  ;Comment: convert int to string
-   293                                  ;ToDo:
-   294                                  ;==========================================================================
-   295                                  
-   296                                  ;==============================Data========================================
-   297                                  section     .data  
-   298 00000000 49733A202525202564-     Format:         db "Is: %% %d %d %c %x %o %b ", 0  
-   298 00000009 202564202563202578-
-   298 00000012 20256F2025622000   
-   299 0000001A 25252049733A202564-     Format2:        db "%% Is: %d %d %c", 0  
-   299 00000023 20256420256300     
-   300 0000002A 00<rep 3E8h>            Print_Buf       times 1000 db 0
-   301                                  Print_Buf_Len   equ $ - Print_Buf    
-   302 00000412 00<rep 40h>             Temp_Buf        times 64 db 0
-   303                                  Temp_BufSize    equ $ - Temp_Buf
-   304                                  BaseElem        equ 98d
-   305                                  PrintArgsPos    equ 0x08 * 2
-   306                                  IpStackPos      equ PrintArgsPos + 5 * 0x08 ;argspos + 5 args
-   307                                  
-   308 00000452 4D6174740A              Msg:            db "Matt", 0x0a
-   309                                  MsgLen          equ $ - Msg
+   272 0000026F 4885C0                                  test rax, rax
+   273 00000272 75ED                                    jnz .next_digit
+   274                                  
+   275 00000274 4889F1                                  mov rcx, rsi
+   276 00000277 4881E9[13040000]                        sub rcx, Temp_Buf ; get_len
+   277 0000027E 48FFCE                                  dec rsi
+   278                                                  
+   279 00000281 FD                      .lp:            std
+   280 00000282 AC                                      lodsb ;[rsi] -> al
+   281 00000283 FC                                      cld
+   282 00000284 AA                                      stosb ;al -> [rdi]
+   283 00000285 E2FA                                    loop .lp          
+   284                                  
+   285 00000287 5E                      .exit:          pop rsi 
+   286 00000288 58                                      pop rax
+   287 00000289 C3                                      ret
+   288                                  ;===================================Itoa===================================
+   289                                  ;Entry: rax - value
+   290                                  ;       rsi - format str pos, 
+   291                                  ;       rdi - print_buf pos
+   292                                  ;Exit:  rdi - cur print_buf pos
+   293                                  ;Expected:
+   294                                  ;Destroyed: rbx, rdx, rcx
+   295                                  ;Comment: convert int to string
+   296                                  ;ToDo:
+   297                                  ;==========================================================================
+   298                                  
+   299                                  ;================================StrLen====================================
+   300                                  my_strlen:
+   301 0000028A 57                                      push rdi
+   302                                  
+   303 0000028B FC                                      cld
+   304 0000028C 4831C9                                  xor rcx, rcx
+   305 0000028F 48FFC9                                  dec rcx ;rcx = -1
+   306 00000292 30C0                                    xor al, al ; al = null terminate
+   307 00000294 F2AE                                    repne scasb ;while al != [rdi]
+   308                                                  ;rcx = -len - 1
+   309                                                  ;rdi to null + 1
+   310                                  
+   311 00000296 4831C0                                  xor rax, rax
+   312 00000299 48FFC8                                  dec rax ;rax = -1
+   313 0000029C 4829C8                                  sub rax, rcx
+   314                                  
+   315 0000029F 5F                                      pop rdi
+   316 000002A0 C3                                      ret
+   317                                  ;================================StrLen====================================
+   318                                  ;Entry: rdi - str ptr
+   319                                  ;Exit:  rax - len
+   320                                  ;Expected:
+   321                                  ;Destroyed: rax, rcx
+   322                                  ;Comment: return len of string
+   323                                  ;ToDo: \n 
+   324                                  ;==========================================================================
+   325                                  
+   326                                  ;==============================Data========================================
+   327                                  section     .data  
+   328 00000000 49733A202525202564-     Format:         db "Is: %% %d %d %c %x %o %s ahaha", 0x0a, 0  
+   328 00000009 202564202563202578-
+   328 00000012 20256F202573206168-
+   328 0000001B 6168610A00         
+   329 00000020 25252049733A202573-     Format2:        db "%% Is: %s", 0x0a, 0  
+   329 00000029 0A00               
+   330 0000002B 00<rep 3E8h>            Print_Buf       times 1000 db 0
+   331                                  Print_Buf_Len   equ $ - Print_Buf    
+   332 00000413 00<rep 40h>             Temp_Buf        times 64 db 0
+   333                                  Temp_BufSize    equ $ - Temp_Buf
+   334                                  BaseElem        equ 98d
+   335                                  PrintArgsPos    equ 0x08 * 2
+   336                                  IpStackPos      equ PrintArgsPos + 5 * 0x08 ;argspos + 5 args
+   337                                  
+   338 00000453 00                      Temp_Char       db 0
+   339 00000454 4D617475776100          Msg             db "Matuwa", 0
+   340                                  MsgLen          equ $ - Msg

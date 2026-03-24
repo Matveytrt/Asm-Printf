@@ -8,46 +8,26 @@
 ; gdb ./printf
 
 %macro PRINT_STR 2
-    mov rax, 0x01
-    mov rdi, 1
-    mov rsi, %1 ;msg
-    mov rdx, %2 ;len
-    syscall
+            mov rax, 0x01
+            mov rdi, 1
+            mov rsi, %1 ;msg
+            mov rdx, %2 ;len
+            syscall
 %endmacro
 
+%macro CHECK_BUFSIZE 1
+            mov rcx, rdi
+            sub rcx, Print_Buf
+            cmp rcx, Print_BufSize
+            jb %1
+            push rsi
+            PRINT_STR Print_Buf, rcx
+            mov rdi, Print_Buf
+            pop rsi
+%endmacro
+
+global my_printf
 section .text
-global _start                  ; predefined entry point name for ld
-;================================Code======================================
-_start:         mov rax, 0x01      ; write64 (rdi, rsi, rdx) ... r10, r8, r9
-                mov rdi, 1         ; stdout
-                mov rsi, Msg
-                mov rdx, MsgLen    ; strlen (Msg)
-                syscall
-
-                xor rax, rax
-                mov rdi, Format
-                mov rsi, -256
-                mov rdx, 12345
-                mov rcx, 'K'
-                mov r8, 0x00
-                mov r9, 0x0B
-                push 0x0A
-                call my_printf
-                add rsp, 0x08
-
-                ; mov rdi, Format2
-                ; mov rsi, -253
-                ; mov rdx, -112233
-                ; mov rcx, 'r'
-                ; call my_printf
-
-                
-                
-                mov rax, 0x3C      ; exit64 (rdi)
-                xor rdi, rdi
-                syscall
-;==========================================================================
-
 ;=============================My_Printf====================================
 my_printf:
                 push r9
@@ -55,21 +35,24 @@ my_printf:
                 push rcx 
                 push rdx
                 push rsi
+
                 push rax
                 push rbp
                 mov rbp, rsp
 
-                mov r10, PrintArgsPos ; start_pos of arg counter
-                mov rsi, rdi ; format str
-                mov rdi, Print_Buf ;printbuf pos
+                mov r12, PrintArgsPos ; start_pos of arg counter NOT CHANGE
+                mov rsi, rdi ; format str ONLY
+                mov rdi, Print_Buf ;print_buf pos
 
 .lp:            lodsb ;[rsi] -> al
                 cmp al, 0x00
                 je .print_buf
-                cmp al, '%'
 
+                cmp al, '%'
                 je .spec
-.back:          stosb ; al -> [rdi]
+.continue:      
+                stosb ; al -> [rdi]
+                CHECK_BUFSIZE .lp
 .next_parse:    jmp .lp
 
 .print_buf:     
@@ -81,17 +64,18 @@ my_printf:
 .spec:
                 lodsb ;al - specifier
                 cmp al, '%'
-                je .back
+                je .continue
                 movzx rax, al
                 sub al, BaseElem
                 shl rax, 3 ;al * 8 byte
                 mov rdx, rax
 
-                mov rax, [rbp + r10] ;argument value
-                add r10, 0x08 ;next elem
-                cmp r10, IpStackPos
+                cmp r12, IpStackPos
                 mov r11, (IpStackPos + 0x08) ;skip ip
-                cmove r10, r11
+                cmove r12, r11 ;rebuild!!
+
+                mov rax, [rbp + r12] ;argument value
+                add r12, 0x08 ;next elem
 
                 jmp [.switch_table + rdx]
 
@@ -102,52 +86,89 @@ my_printf:
                 times 10 dq .default
                 dq .case_o  ;111    13
                 dq .case_p  ;112    14
-                dq .default
-                dq .case_s  ;114    16
-                times 5 dq .default 
+                times 2 dq .default
+                dq .case_s  ;115    16
+                times 4 dq .default 
                 dq .case_x  ;120    22
-
-.case_b:
-                mov r8, 0x01 ;bin mask
-                mov cl, 0x01 ;bin offset
-                mov dl, 'b'
-                jmp .numsyst_conv
 
 .case_c:             
                 stosb 
+                CHECK_BUFSIZE .next_parse
                 jmp .next_parse     
 
 .case_d:
-                call itoa
+                mov rdx, Temp_BufSize
+                call check_buf
+                call itoa ;put decimal value string in print_buf
                 jmp .next_parse
 
 
-.case_o:        
-                mov r8, 0x07 ;octo mask
-                mov cl, 0x03 ;octo offset
-                mov dl, 'o'
-                jmp .numsyst_conv
-
 .case_p:
 
-.case_s:
+.case_s:        
+                push rsi ;save format_str ptr
+                push rdi ;save print_buf addr
 
-.case_x:        
-                mov r8, 0x0F ;hex mask
-                mov cl, 0x04 ;hex offset
-                mov dl, 'x'
-                jmp .numsyst_conv
+                mov rdi, rax ;rdi = string_ptr
+                call my_strlen ;rax - len of string arg
+                mov rsi, rdi ;string_ptr
+                mov rcx, rax ;len to rcx
+                pop rdi ;print_buf
+
+                cmp rcx, Print_BufSize
+                jb .skip_write_buf
+
+                push rsi
+                push rcx
+                mov rdx, rdi
+                sub rdx, Print_Buf
+                PRINT_STR Print_Buf, rdx ;write to cmd_str and clear print_buf
+                pop rcx
+                pop rsi
+
+                PRINT_STR rsi, rcx ;write str to cmd_str
+                mov rdi, Print_Buf
+                jmp .end_s
+
+.skip_write_buf:
+                rep movsb ;cpy len [rsi] -> [rdi]
+
+.end_s:         pop rsi ;ret format str ptr
+                jmp .next_parse
 
 .default:
                 jmp .next_parse
 
+.case_b:
+                mov r13, 0x01 ;bin mask
+                mov cl, 0x01 ;bin offset
+                mov bl, 'b'
+                jmp .numsyst_conv
+
+.case_o:        
+                mov r13, 0x07 ;octo mask
+                mov cl, 0x03 ;octo offset
+                mov bl, 'o'
+                jmp .numsyst_conv
+
+.case_x:        
+                mov r13, 0x0F ;hex mask
+                mov cl, 0x04 ;hex offset
+                mov bl, 'x'
+                jmp .numsyst_conv
+
 .numsyst_conv:
-                mov r9, rax ;save arg
+                push rcx
+                mov rdx, Temp_BufSize
+                call check_buf
+                pop rcx
+
+                mov r14, rax ;save arg
                 mov al, '0'
                 stosb
-                mov al, dl
+                mov al, bl
                 stosb
-                mov rax, r9
+                mov rax, r14
                 call num_to_str
                 jmp .next_parse
 
@@ -170,19 +191,10 @@ my_printf:
 ;               r9  - fifth
 ;               others in a stack
 ;               rax - count float args xmm0 - xmm7
-;Destroyed:     r10
+;Destroyed:     r10 - r14
 ;Expected:
-;Comment:       r10 - current parsing argument
-;ToDo:
-;==========================================================================
-
-;=============================Print_Str====================================
-;==========================================================================
-;Entry:  
-;Destroyed:
-;Expected:
-;Comment:
-;ToDo:
+;Comment:       r12 - current parsing argument
+;ToDo: float, """"
 ;==========================================================================
 
 ;===================================num_to_str=============================
@@ -191,12 +203,12 @@ num_to_str:
                 push rsi
 
                 mov rdx, rax ;save rax
-                mov r9, rdi ;save print_buf pos in r9
+                mov r14, rdi ;save print_buf pos in r14
                 mov rdi, Temp_Buf
 
 .next_digit: 
                 mov rax, rdx ;save in new rax
-                and rax, r8 ;mask with numsyst base
+                and rax, r13 ;mask with numsyst base
 
                 cmp rax, 0x0A ;is letter digit
                 jae .get_letter
@@ -215,7 +227,7 @@ num_to_str:
 
 .exit:          
                 mov rsi, rdi ;cur Temp_Buf pos
-                mov rdi, r9 ;return print_buf pos
+                mov rdi, r14 ;return print_buf pos
 
                 mov rcx, rsi
                 sub rcx, Temp_Buf ; get_len
@@ -233,12 +245,12 @@ num_to_str:
                 ret
 ;===================================num_to_str=============================
 ;Entry: rax - arg, 
-;       r8 - numsyst base (that's degree of 2 and also a mask)
+;       r13 - numsyst base (that's degree of 2 and also a mask)
 ;       cl - numsyst offset (in degree of 2 positions)
 ;       rdi - printf_buf pos
-;Exit:  
+;Exit:  rdi - buf pos
 ;Expected:
-;Destroyed: rdx, r9, rcx
+;Destroyed: rdx, r14, rcx
 ;Comment: convert digit to numsystem str
 ;ToDo:
 ;==========================================================================
@@ -274,9 +286,9 @@ itoa:
                 dec rsi
                 
 .lp:            std
-                lodsb
+                lodsb ;[rsi] -> al
                 cld
-                stosb
+                stosb ;al -> [rdi]
                 loop .lp          
 
 .exit:          pop rsi 
@@ -293,17 +305,71 @@ itoa:
 ;ToDo:
 ;==========================================================================
 
+;================================StrLen====================================
+my_strlen:
+                push rdi
+
+                cld
+                xor rcx, rcx
+                dec rcx ;rcx = -1
+                xor al, al ; al = null terminate
+                repne scasb ;while al != [rdi]
+                ;rcx = -len - 1
+                ;rdi to null + 1
+
+                xor rax, rax
+                dec rax ;rax = -1
+                sub rax, rcx
+
+                pop rdi
+                ret
+;================================StrLen====================================
+;Entry: rdi - str ptr
+;Exit:  rax - len
+;Expected:
+;Destroyed: rax, rcx
+;Comment: return len of string
+;ToDo: \n 
+;==========================================================================
+
+;================================Check_Buf=================================
+check_buf:  
+                mov rcx, rdi
+                sub rcx, Print_Buf ;num of writen symblols
+
+                add rdx, rcx ;num of symbols that's should be writen in buf
+                cmp rdx, Print_BufSize
+                jb .exit
+
+                push rsi ;save format_str ptr
+                push rax ;save cur writing_arg
+
+                PRINT_STR Print_Buf, rcx
+                mov rdi, Print_Buf
+
+                pop rax
+                pop rsi
+
+.exit:          
+                ret
+;================================Check_Buf=================================
+;Entry: rdi - print_buf pos
+;       rdx - num of characters, that we are preparing for write
+;Exit:  rdi - new or prev print_buf pos 
+;Expected:
+;Destroyed: rcx rdx r8 - r11
+;Comment: write print_buf to cmd str and clear print_buf 
+;                         when overflow could be reached
+;ToDo: 
+;==========================================================================
+
 ;==============================Data========================================
 section     .data  
-Format:         db "Is: %% %d %d %c %x %o %b ", 0  
-Format2:        db "%% Is: %d %d %c", 0  
-Print_Buf       times 1000 db 0
-Print_Buf_Len   equ $ - Print_Buf    
-Temp_Buf        times 64 db 0
-Temp_BufSize    equ $ - Temp_Buf
+Print_BufSize   equ 1024
+Print_Buf       times Print_BufSize db 0
+Temp_BufSize    equ 64 ;64 bin max size
+Temp_Buf        times Temp_BufSize db 0
 BaseElem        equ 98d
 PrintArgsPos    equ 0x08 * 2
 IpStackPos      equ PrintArgsPos + 5 * 0x08 ;argspos + 5 args
-
-Msg:            db "Matt", 0x0a
-MsgLen          equ $ - Msg
+Temp_Char       db 0
