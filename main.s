@@ -1,13 +1,14 @@
 ; nasm -f elf64 main.s -o asmmain.o
 ; nasm -f elf64 printf.s -o printf.o
-; ld -s -o program asmmain.o printf.o
+; g++ -no-pie asmmain.o printf.o -o asmprintf
+; ./asmprintf
 
 extern my_printf
 
-global _start                  ; predefined entry point name for ld
+global main                 ; predefined entry point name for ld
 section .text
 ;================================Code======================================
-_start:  
+main:  
                 xor rax, rax ;"Is: %% %d %d %c %x %o %s %b "
                 mov rdi, Format
                 mov rsi, -256 ;first

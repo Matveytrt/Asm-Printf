@@ -3,7 +3,7 @@
 ;:=========================================================================
 
 ; nasm -f elf64 -l printf.lst printf.s ;  ld -s -o printf printf.o
-; nasm -f elf64 -g printf.s -o printf.o
+; nasm -f elf64 -g printf.s -o printf.o ; gcc -no-pie -Wl,--as-needed printf.o -o printf
 ; gdb ./printf
 
 %macro PRINT_STR 2
@@ -25,41 +25,54 @@
             pop rsi
 %endmacro
 
-
-%macro SAFE_PRINTF 1
-    ; save all regs
-    push rax
-    push rcx
-    push r11
-    push rdi
-    push rsi
-    push rdx
-    push r8
-    push r9
-    push r10
-    push rbx
-    
-    sub rsp, 8
-    mov rdi, %1
-    xor eax, eax
-    call printf
-    add rsp, 8
-    
-    ; Восстанавливаем регистры
-    pop rbx
-    pop r10
-    pop r9
-    pop r8
-    pop rdx
-    pop rsi
-    pop rdi
-    pop r11
-    pop rcx
-    pop rax
+%macro GET_POW2BASE 3 
+        mov r13, %1 ;mask
+        mov cl, %2  ;offset
+        mov bl, %3  ;spec_sym
+        jmp .numsyst_conv
 %endmacro
 
+%macro GET_ARG 1
+        mov rax, [rbp + r12] ;argument value
+        add r12, %1 ;elem size step
+%endmacro
+
+%macro GET_X_ARG 1 ;!fix
+        mov rax, [rbp + r12] ;argument value
+        add r12, %1 ;elem size step
+%endmacro
+
+%macro PUSH_ALL_XMM 0
+    sub rsp, X_ArgsSize ; 8 * 16 = 128 byte
+    movdqu [rsp], xmm0
+    movdqu [rsp+16], xmm1
+    movdqu [rsp+32], xmm2
+    movdqu [rsp+48], xmm3
+    movdqu [rsp+64], xmm4
+    movdqu [rsp+80], xmm5
+    movdqu [rsp+96], xmm6
+    movdqu [rsp+112], xmm7
+%endmacro
+
+%macro POP_ALL_XMM 0
+    movdqu xmm0, [rsp]
+    movdqu xmm1, [rsp+16]
+    movdqu xmm2, [rsp+32]
+    movdqu xmm3, [rsp+48]
+    movdqu xmm4, [rsp+64]
+    movdqu xmm5, [rsp+80]
+    movdqu xmm6, [rsp+96]
+    movdqu xmm7, [rsp+112]
+    add rsp, X_ArgsSize
+%endmacro
+
+;==========================================================================
 global my_printf
-section .text
+extern printf
+
+section         .text
+;==========================================================================
+
 ;=============================My_Printf====================================
 my_printf:
                 push rbp ;align stk
@@ -70,55 +83,62 @@ my_printf:
                 push rdx
                 push rsi
                 mov rbp, rsp ;pos of addresation
-
                 push rdi ;save format str
+
+                PUSH_ALL_XMM
                 push rax ;save nfloats
-                sub rsp, R_Step ;align stack
+
+                push rbx
+                push r12
+                push r13
+                push r14
+                push r15 ;callee saved
 
                 mov r12, R_ArgsPos ; start_pos of arg counter NOT CHANGE
                 mov rsi, rdi ; format str ONLY
                 mov rdi, Print_Buf ;print_buf pos
 
-.lp:            lodsb ;[rsi] -> al
-                cmp al, 0x00
+    .next_parse: 
+                lodsb ;[rsi] -> al
+                cmp al, NullTrm
                 je .print_buf
 
-                cmp al, '%'
+                cmp al, FormatSpec
                 je .spec
-.continue:      
+        .continue:      
                 stosb ; al -> [rdi]
-                CHECK_BUFSIZE .lp
-.next_parse:    jmp .lp
+                CHECK_BUFSIZE .next_parse
+                jmp .next_parse
 
-.print_buf:     
+        .print_buf:   ;syscall and write print_buf to cmd_str  
                 mov rcx, rdi
                 sub rcx, Print_Buf
                 PRINT_STR Print_Buf, rcx
                 jmp .exit
 
-.spec:
+        .spec:
                 lodsb ;al - specifier
-                cmp al, '%'
+                cmp al, FormatSpec
                 je .continue
-                movzx rax, al
-                sub al, BaseElem
-                shl rax, 3 ;al * 8 byte
+
+                movzx rax, al ;clear rax except al
+                sub al, BaseElem ;get jump table offset
+                shl rax, 3 ;al * 8 byte addreses
                 mov rdx, rax
 
-                cmp r12, StartStackPos ;rbp pos
                 mov r11, (StartStackPos + X_Step) ;skip rbp and ip
+                cmp r12, StartStackPos ;rbp pos
                 cmove r12, r11
-
-                mov rax, [rbp + r12] ;argument value
-                add r12, R_Step ;next elem
 
                 jmp [.switch_table + rdx]
 
-.switch_table:
+    .switch_table:
                 dq .case_b  ;98     0
                 dq .case_c  ;99     1
                 dq .case_d  ;100    2
-                times 10 dq .default
+                dq .default
+                dq .case_f  ;102    4
+                times 8 dq .default
                 dq .case_o  ;111    13
                 dq .case_p  ;112    14
                 times 2 dq .default
@@ -126,21 +146,28 @@ my_printf:
                 times 4 dq .default 
                 dq .case_x  ;120    22
 
-.case_c:             
+        .case_c:         
+                GET_ARG R_Step   
                 stosb 
                 CHECK_BUFSIZE .next_parse
                 jmp .next_parse     
 
-.case_d:
+        .case_d:
+                GET_ARG R_Step       
                 mov rdx, Temp_BufSize
                 call check_buf
                 call itoa ;put decimal value string in print_buf
                 jmp .next_parse
 
+        .case_f:
+                GET_X_ARG X_Step
+                jmp .next_parse
 
-.case_p:
+        .case_p: 
+                jmp .case_x
 
-.case_s:        
+        .case_s:        
+                GET_ARG R_Step 
                 push rsi ;save format_str ptr
                 push rdi ;save print_buf addr
 
@@ -165,34 +192,30 @@ my_printf:
                 mov rdi, Print_Buf
                 jmp .end_s
 
-.skip_write_buf:
+            .skip_write_buf:
                 rep movsb ;cpy len [rsi] -> [rdi]
 
-.end_s:         pop rsi ;ret format str ptr
+            .end_s:         
+                pop rsi ;ret format str ptr
                 jmp .next_parse
 
-.default:
-                jmp .next_parse
 
-.case_b:
-                mov r13, 0x01 ;bin mask
-                mov cl, 0x01 ;bin offset
-                mov bl, 'b'
+        .case_b:
+                GET_ARG R_Step 
+                GET_POW2BASE 0x01, 0x01, 'b'
                 jmp .numsyst_conv
 
-.case_o:        
-                mov r13, 0x07 ;octo mask
-                mov cl, 0x03 ;octo offset
-                mov bl, 'o'
+        .case_o:
+                GET_ARG R_Step         
+                GET_POW2BASE 0x07, 0x03, 'o'
                 jmp .numsyst_conv
 
-.case_x:        
-                mov r13, 0x0F ;hex mask
-                mov cl, 0x04 ;hex offset
-                mov bl, 'x'
+        .case_x:  
+                GET_ARG R_Step 
+                GET_POW2BASE 0x0F, 0x04, 'x'      
                 jmp .numsyst_conv
 
-.numsyst_conv:
+            .numsyst_conv: ;converting to cur num system
                 push rcx
                 mov rdx, Temp_BufSize
                 call check_buf
@@ -205,14 +228,29 @@ my_printf:
                 stosb
                 mov rax, r14
                 call num_to_str
+
                 jmp .next_parse
 
+        .default:
+                jmp .next_parse
 
-.exit:          
-                add rsp, R_Step
+    .exit:      
+
+                mov rdi, DebugFormat
+                mov rsi, DebugStr
+                xor rax, rax
+                call printf
+
+                pop r15
+                pop r14
+                pop r13 
+                pop r12
+                pop rbx  ;callee saved
+
                 pop rax 
-                pop rdi
+                POP_ALL_XMM
 
+                pop rdi
                 pop rsi 
                 pop rdx
                 pop rcx
@@ -232,8 +270,10 @@ my_printf:
 ;               rax - count float args xmm0 - xmm7
 ;Destroyed:     r10 - r14
 ;Expected:
-;Comment:       r12 - current parsing argument
-;ToDo: float, """"
+;Comment:       during the execution of printf
+;               r12 - current stack arg position
+;               rsi - format str addr
+;ToDo: float, """", \n
 ;==========================================================================
 
 ;===================================num_to_str=============================
@@ -245,26 +285,27 @@ num_to_str:
                 mov r14, rdi ;save print_buf pos in r14
                 mov rdi, Temp_Buf
 
-.next_digit: 
+    .next_digit: 
                 mov rax, rdx ;save in new rax
                 and rax, r13 ;mask with numsyst base
 
                 cmp rax, 0x0A ;is letter digit
                 jae .get_letter
                 add rax, '0' ;get digit
-.back:          stosb ;temp_buf
+        .back:          
+                stosb ;temp_buf
 
                 shr rdx, cl ;next digit
 
                 test rdx, rdx 
                 jz .exit ;don't check insign zeros
-
                 jmp .next_digit
 
-.get_letter:    add rax, ('A' - 0x0A) ;10-15 to A-F
+        .get_letter:   
+                add rax, ('A' - 0x0A) ;10-15 to A-F
                 jmp .back
 
-.exit:          
+    .exit:          
                 mov rsi, rdi ;cur Temp_Buf pos
                 mov rdi, r14 ;return print_buf pos
 
@@ -272,11 +313,12 @@ num_to_str:
                 sub rcx, Temp_Buf ; get_len
                 dec rsi
 
-.lp:            std
+        .next_cpy:            
+                std
                 lodsb
                 cld
                 stosb
-                loop .lp 
+                loop .next_cpy 
 
                 pop rsi
                 pop rax
@@ -311,7 +353,8 @@ itoa:
                 not rax
                 inc rax
 
-.next_digit:    xor rdx, rdx
+    .next_digit:    
+                xor rdx, rdx
                 div rbx ;rax /= 10 rdx - left
                 add dl, '0'
                 mov [rsi], dl
@@ -324,14 +367,17 @@ itoa:
                 sub rcx, Temp_Buf ; get_len
                 dec rsi
                 
-.lp:            std
+    .next_cpy:            
+                std
                 lodsb ;[rsi] -> al
                 cld
                 stosb ;al -> [rdi]
-                loop .lp          
+                loop .next_cpy          
 
-.exit:          pop rsi 
+    .exit:          
+                pop rsi 
                 pop rax
+
                 ret
 ;===================================Itoa===================================
 ;Entry: rax - value
@@ -389,7 +435,7 @@ check_buf:
                 pop rax
                 pop rsi
 
-.exit:          
+    .exit:          
                 ret
 ;================================Check_Buf=================================
 ;Entry: rdi - print_buf pos
@@ -403,15 +449,22 @@ check_buf:
 ;==========================================================================
 
 ;==============================Data========================================
-section     .data  
+section         .data  
 Print_BufSize   equ 1024
 Print_Buf       times Print_BufSize db 0
-Temp_BufSize    equ 64 ;64 bin max size
+Temp_BufSize    equ 66 ;64 bin max size plus prefix 0x 0b 0o
 Temp_Buf        times Temp_BufSize db 0
 BaseElem        equ 98d
-Temp_Char       db 0
+Temp_Ip         db 0
 
-R_Step          equ 8
-X_Step          equ 16
-R_ArgsPos       equ 0x00
-StartStackPos    equ R_ArgsPos + 5 * 0x08 ;R argspos + 5 specificator R args
+R_Step          equ 8 ;regs stack ofs
+X_Step          equ 16 ;xmm stack ofs
+R_ArgsPos       equ 0
+X_ArgsPos       equ 0x00
+X_ArgsSize      equ 16 * 8 ;8 xmm regs in stack
+StartStackPos   equ R_ArgsPos + 5 * 0x08 ;R argspos + 5 specificator R args
+NullTrm         equ 0x00
+FormatSpec      equ '%'
+
+DebugFormat:    db 0x0a, "Debug format for printf called from %s %%", 0x0a, 0
+DebugStr:       db "my_printf.s", 0
