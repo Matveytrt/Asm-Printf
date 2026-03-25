@@ -14,12 +14,11 @@ _start:
                 mov rdx, 12345 ;second
                 mov rcx, 'K' ;third
                 mov r8, 0x0F0 ;fourth
-                mov r9, 0x0BBB ;fifth
-                ; push 0x0A     
+                mov r9, 0x0BBB ;fifth   
                 push 0x28 ;seventh
                 push Msg ; sixth
                 call my_printf
-                add rsp, 0x10
+                add rsp, 16
 
                 ; xor rax, rax
                 ; mov rdi, Format2

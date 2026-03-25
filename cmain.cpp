@@ -12,6 +12,7 @@ extern "C" void my_printf(const char *format, ...);
 
 int main()
 {
+    // #include "test.h"
     my_printf("pupupu %d %c\n", 25, 'r');
     return 0;
 }

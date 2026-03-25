@@ -4,7 +4,6 @@
 
 ; nasm -f elf64 -l printf.lst printf.s ;  ld -s -o printf printf.o
 ; nasm -f elf64 -g printf.s -o printf.o
-; gcc -no-pie printf.o -o printf
 ; gdb ./printf
 
 %macro PRINT_STR 2
@@ -26,21 +25,57 @@
             pop rsi
 %endmacro
 
+
+%macro SAFE_PRINTF 1
+    ; save all regs
+    push rax
+    push rcx
+    push r11
+    push rdi
+    push rsi
+    push rdx
+    push r8
+    push r9
+    push r10
+    push rbx
+    
+    sub rsp, 8
+    mov rdi, %1
+    xor eax, eax
+    call printf
+    add rsp, 8
+    
+    ; Восстанавливаем регистры
+    pop rbx
+    pop r10
+    pop r9
+    pop r8
+    pop rdx
+    pop rsi
+    pop rdi
+    pop r11
+    pop rcx
+    pop rax
+%endmacro
+
 global my_printf
 section .text
 ;=============================My_Printf====================================
 my_printf:
+                push rbp ;align stk
+
                 push r9
                 push r8
                 push rcx 
                 push rdx
                 push rsi
+                mov rbp, rsp ;pos of addresation
 
-                push rax
-                push rbp
-                mov rbp, rsp
+                push rdi ;save format str
+                push rax ;save nfloats
+                sub rsp, R_Step ;align stack
 
-                mov r12, PrintArgsPos ; start_pos of arg counter NOT CHANGE
+                mov r12, R_ArgsPos ; start_pos of arg counter NOT CHANGE
                 mov rsi, rdi ; format str ONLY
                 mov rdi, Print_Buf ;print_buf pos
 
@@ -70,12 +105,12 @@ my_printf:
                 shl rax, 3 ;al * 8 byte
                 mov rdx, rax
 
-                cmp r12, IpStackPos
-                mov r11, (IpStackPos + 0x08) ;skip ip
-                cmove r12, r11 ;rebuild!!
+                cmp r12, StartStackPos ;rbp pos
+                mov r11, (StartStackPos + X_Step) ;skip rbp and ip
+                cmove r12, r11
 
                 mov rax, [rbp + r12] ;argument value
-                add r12, 0x08 ;next elem
+                add r12, R_Step ;next elem
 
                 jmp [.switch_table + rdx]
 
@@ -173,14 +208,18 @@ my_printf:
                 jmp .next_parse
 
 
-.exit:          pop rbp
+.exit:          
+                add rsp, R_Step
                 pop rax 
+                pop rdi
+
                 pop rsi 
                 pop rdx
                 pop rcx
                 pop r8
                 pop r9
 
+                pop rbp
                 ret
 ;==========================================================================
 ;Entry:         rdi - format str addr
@@ -370,6 +409,9 @@ Print_Buf       times Print_BufSize db 0
 Temp_BufSize    equ 64 ;64 bin max size
 Temp_Buf        times Temp_BufSize db 0
 BaseElem        equ 98d
-PrintArgsPos    equ 0x08 * 2
-IpStackPos      equ PrintArgsPos + 5 * 0x08 ;argspos + 5 args
 Temp_Char       db 0
+
+R_Step          equ 8
+X_Step          equ 16
+R_ArgsPos       equ 0x00
+StartStackPos    equ R_ArgsPos + 5 * 0x08 ;R argspos + 5 specificator R args
