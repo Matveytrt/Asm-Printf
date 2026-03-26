@@ -16,12 +16,13 @@
 
 %macro CHECK_BUFSIZE 1
             mov rcx, rdi
-            sub rcx, Print_Buf
+            sub rcx, r14
             cmp rcx, Print_BufSize
             jb %1
             push rsi
-            PRINT_STR Print_Buf, rcx
-            mov rdi, Print_Buf
+            lea r11, [rel Print_Buf]
+            PRINT_STR r11, rcx
+            lea rdi, [rel Print_Buf]
             pop rsi
 %endmacro
 
@@ -70,7 +71,7 @@
 global my_printf
 extern printf
 ;==========================================================================
-
+default rel
 ;==========================================================================
 section         .text
 ;==========================================================================
@@ -99,7 +100,8 @@ my_printf:
                 mov r12, R_ArgsPos ; start_pos of arg counter NOT CHANGE
                 mov r15, X_ArgsPos
                 mov rsi, rdi ; format str ONLY
-                mov rdi, Print_Buf ;print_buf pos
+                lea rdi, [rel Print_Buf] ;print_buf pos
+                lea r14, [rel Print_Buf] ;save pos
                 xor rbx, rbx ;parsed float args counter = 0
 
     .next_parse: 
@@ -116,8 +118,9 @@ my_printf:
 
         .print_buf:   ;syscall and write print_buf to cmd_str  
                 mov rcx, rdi
-                sub rcx, Print_Buf
-                PRINT_STR Print_Buf, rcx
+                sub rcx, r14
+                lea r11, [rel Print_Buf]
+                PRINT_STR r11, rcx
                 jmp .exit
 
         .spec:
@@ -131,7 +134,8 @@ my_printf:
                 cmp r12, StartStackPos ;rbp pos
                 cmove r12, r11
 
-                jmp [.switch_table + (rax - 'b') * 8]
+                lea r11, [rel .switch_table]
+                jmp [r11 + (rax - 'b') * 8]
 
     .switch_table:
                 dq .case_b                          ;   %b
@@ -161,12 +165,14 @@ my_printf:
                 jmp .next_parse
 
         .case_f:
-
-                inc rbx
+                inc rbx ;inc count of parsed floats
                 cmp rbx, N_X_notStk_Args
                 cmova r15, r12
                 ja .incstkpos
             .get_float_arg:
+                mov rdx, Temp_BufSize
+                call check_buf
+
                 GET_X_ARG X_Step
                 call ftoa
                 jmp .next_parse
@@ -195,13 +201,14 @@ my_printf:
                 push rsi
                 push rcx
                 mov rdx, rdi
-                sub rdx, Print_Buf
-                PRINT_STR Print_Buf, rdx ;write to cmd_str and clear print_buf
+                sub rdx, r14
+                lea r11, [rel Print_Buf]
+                PRINT_STR r11, rdx ;write to cmd_str and clear print_buf
                 pop rcx
                 pop rsi
 
                 PRINT_STR rsi, rcx ;write str to cmd_str
-                mov rdi, Print_Buf
+                lea rdi, [rel Print_Buf]
                 jmp .end_s
 
             .skip_write_buf:
@@ -235,12 +242,12 @@ my_printf:
                 pop rdx
                 pop rcx
 
-                mov r14, rax ;save arg
+                mov r11, rax ;save arg
                 mov al, '0'
                 stosb
                 mov al, dl
                 stosb
-                mov rax, r14
+                mov rax, r11
                 call num_to_str
 
                 jmp .next_parse
@@ -281,10 +288,11 @@ my_printf:
 ;               r9  - fifth
 ;               others in a stack
 ;               rax - count float args xmm0 - xmm7
-;Destroyed:     r10 - r14
+;Destroyed:     r10 r11 r13 r8 r9
 ;Expected:
 ;Comment:       during the execution of printf
 ;               r12 - current stack R arg position NOT TOUCH!
+;               r14 - print_buf start pos addr NOT TOUCH
 ;               r15 - current stack X arg pos NOT TOUCH!
 ;               rbx - float arg counter NOT TOUCH!
 ;               rdi - print_buf addr
@@ -297,9 +305,10 @@ num_to_str:
                 push rax 
                 push rsi
 
+                lea r10, [rel Temp_Buf]
                 mov rdx, rax ;save rax
-                mov r14, rdi ;save print_buf pos in r14
-                mov rdi, Temp_Buf
+                mov r11, rdi ;save print_buf pos in r11
+                lea rdi, [rel Temp_Buf]
 
     .next_digit: 
                 mov rax, rdx ;save in new rax
@@ -323,10 +332,10 @@ num_to_str:
 
     .exit:          
                 mov rsi, rdi ;cur Temp_Buf pos
-                mov rdi, r14 ;return print_buf pos
+                mov rdi, r11 ;return print_buf pos
 
                 mov rcx, rsi
-                sub rcx, Temp_Buf ; get_len
+                sub rcx, r10 ; get_len
                 dec rsi
 
         .next_cpy:            
@@ -347,7 +356,7 @@ num_to_str:
 ;       rdi - printf_buf pos
 ;Exit:  rdi - buf pos
 ;Expected:
-;Destroyed: rdx, r14, rcx
+;Destroyed: rdx, r11, rcx r10
 ;Comment: convert digit to numsystem str
 ;ToDo:
 ;==========================================================================
@@ -356,9 +365,11 @@ num_to_str:
 itoa:           
                 push rax 
                 push rsi
+                push r14
 
+                lea r10, [rel Temp_Buf]
                 mov r13, 10 ;decimal
-                mov rsi, Temp_Buf
+                lea rsi, [rel Temp_Buf]
 
                 cmp rax, 0x00 ;set SF
                 jns .next_digit
@@ -380,7 +391,7 @@ itoa:
                 jnz .next_digit
 
                 mov rcx, rsi
-                sub rcx, Temp_Buf ; get_len
+                sub rcx, r10 ; get_len
                 dec rsi
                 
     .next_cpy:            
@@ -390,7 +401,8 @@ itoa:
                 stosb ;al -> [rdi]
                 loop .next_cpy          
 
-    .exit:          
+    .exit:        
+                pop r14
                 pop rsi 
                 pop rax
 
@@ -413,7 +425,7 @@ ftoa:
 
 
                 movq rax, xmm0
-                test rax, [Sign_Mask] ;double signmask
+                test rax, [rel Sign_Mask] ;double signmask
                 jz .positive
 
                 xorpd xmm1, xmm1          ; xmm1 = 0.0
@@ -422,7 +434,7 @@ ftoa:
                 mov al, '-'
                 stosb
     .positive:
-                movsd xmm4, [epsilon]
+                movsd xmm4, [rel epsilon]
                 addsd xmm0, xmm4
                 movsd xmm2, xmm0 
                 cvttsd2si rax, xmm0 ; eax integer part
@@ -496,7 +508,7 @@ my_strlen:
 ;================================Check_Buf=================================
 check_buf:  
                 mov rcx, rdi
-                sub rcx, Print_Buf ;num of writen symblols
+                sub rcx, r14 ;num of writen symblols
 
                 add rdx, rcx ;num of symbols that's should be writen in buf
                 cmp rdx, Print_BufSize
@@ -505,8 +517,9 @@ check_buf:
                 push rsi ;save format_str ptr
                 push rax ;save cur writing_arg
 
-                PRINT_STR Print_Buf, rcx
-                mov rdi, Print_Buf
+                lea r11, [rel Print_Buf]
+                PRINT_STR r11, rcx
+                lea rdi, [rel Print_Buf]
 
                 pop rax
                 pop rsi
@@ -530,7 +543,6 @@ Print_BufSize   equ 1024
 Print_Buf       times Print_BufSize db 0
 Temp_BufSize    equ 66 ;64 bin max size plus prefix 0x 0b 0o
 Temp_Buf        times Temp_BufSize db 0
-BaseElem        equ 98d
 
 R_Step          equ 8 ;regs stack ofs
 X_Step          equ 16 ;xmm stack ofs
@@ -548,3 +560,5 @@ DecNum          equ 10
 epsilon         dq 0.0000005
 DebugFormat:    db 0x0a, "Debug format for printf called from %s %%", 0x0a, 0
 DebugStr:       db "my_printf.s", 0
+
+section .note.GNU-stack noalloc noexec nowrite progbits

@@ -4,7 +4,7 @@
 ; ./asmprintf
 
 extern my_printf
-
+default rel
 global main                 ; predefined entry point name for ld
 section .text
 ;================================Code======================================
@@ -32,7 +32,7 @@ main:
                 ; call my_printf
 
                 mov rax, 9
-                mov rdi, Format3
+                lea rdi, [rel Format3]
                 mov rsi, 1
                 mov rdx, 2
                 mov rcx, 3
@@ -63,7 +63,7 @@ main:
 section .data
 Format:         db "Is: %% %d %d %c %x %o %s %b %f ahaha", 0x0a, 0  
 Format2:        db "%% Is: %d %f", 0x0a, 0 
-Format3:        db 'Test: 1: %f %x | 2: %f %x | 3: %f %x | 4: %f %x | 5: %f %x | 6: %f %x | 7: %f %x | 8: %f %x |9: %f %x', 0
+Format3:        db "Test: 1: %f %x | 2: %f %x | 3: %f %x | 4: %f %x | 5: %f %x | 6: %f %x | 7: %f %x | 8: %f %x |9: %f %x", 0
 Msg             db "Matuwa the beast!", 0
 MsgLen          equ $ - Msg
 value           dq 1.253
