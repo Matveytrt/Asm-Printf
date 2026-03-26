@@ -125,30 +125,27 @@ my_printf:
                 cmp al, FormatSpec
                 je .continue
 
-                movzx rax, al ;clear rax except al
-                sub al, BaseElem ;get jump table offset
-                shl rax, 3 ;al * 8 byte addreses
-                mov rdx, rax
-
+                movzx rax, al ;clear rax except al - ascii
+    
                 mov r11, (StartStackPos + X_Step) ;skip rbp and ip
                 cmp r12, StartStackPos ;rbp pos
                 cmove r12, r11
 
-                jmp [.switch_table + rdx]
+                jmp [.switch_table + (rax - 'b') * 8]
 
     .switch_table:
-                dq .case_b  ;98     0
-                dq .case_c  ;99     1
-                dq .case_d  ;100    2
-                dq .default
-                dq .case_f  ;102    4
-                times 8 dq .default
-                dq .case_o  ;111    13
-                dq .case_p  ;112    14
-                times 2 dq .default
-                dq .case_s  ;115    16
-                times 4 dq .default 
-                dq .case_x  ;120    22
+                dq .case_b                          ;   %b
+                dq .case_c                          ;   %c
+                dq .case_d                          ;   %d
+                times ('f' - 'd' - 1) dq .default   ;   skip
+                dq .case_f                          ;   %f
+                times ('o' - 'f' - 1) dq .default   ;   skip
+                dq .case_o                          ;   %o
+                dq .case_p                          ;   %p
+                times ('s' - 'p' - 1) dq .default   ;   skip
+                dq .case_s                          ;   %b
+                times ('x' - 's' - 1) dq .default   ;   skip 
+                dq .case_x                          ;   %x
 
         .case_c:         
                 GET_ARG R_Step   
@@ -175,7 +172,7 @@ my_printf:
                 jmp .next_parse
 
             .incstkpos:
-                add r12, X_Step
+                add r12, R_Step
                 jmp .get_float_arg
 
         .case_p: 
@@ -411,48 +408,48 @@ itoa:
 
 ;===================================Ftoa===================================
 ftoa:  
-                mov eax, DecNum
-                cvtsi2ss xmm3, eax ;10.0
+                mov rax, DecNum
+                cvtsi2sd xmm3, rax ;10.0
 
 
-                movd eax, xmm0
-                test eax, [Sign_Mask] ;float signmask
+                movq rax, xmm0
+                test rax, [Sign_Mask] ;double signmask
                 jz .positive
 
-                xorps xmm1, xmm1          ; xmm1 = 0.0
-                subss xmm1, xmm0          ; xmm1 = -xmm0
-                movss xmm0, xmm1
+                xorpd xmm1, xmm1          ; xmm1 = 0.0
+                subsd xmm1, xmm0          ; xmm1 = -xmm0
+                movsd xmm0, xmm1
                 mov al, '-'
                 stosb
     .positive:
-                movss xmm4, [epsilon]
-                addss xmm0, xmm4
-                movss xmm2, xmm0 
-                cvttss2si rax, xmm0 ; eax integer part
+                movsd xmm4, [epsilon]
+                addsd xmm0, xmm4
+                movsd xmm2, xmm0 
+                cvttsd2si rax, xmm0 ; eax integer part
 
                 call itoa ;write integer part
 
-                cvtsi2ss xmm1, rax
-                movss xmm0, xmm2
-                subss xmm0, xmm1 ;kill iteger part
+                cvtsi2sd xmm1, rax
+                movsd xmm0, xmm2
+                subsd xmm0, xmm1 ;kill iteger part
                 mov al, '.'
                 stosb
 
                 mov rcx, Precision
 
     .next_digit:
-                mulss xmm0, xmm3    ;xmm0 *= 10.0
-                movss xmm2, xmm0  ;save xmm0
-                cvttss2si rax, xmm0  
+                mulsd xmm0, xmm3    ;xmm0 *= 10.0
+                movsd xmm2, xmm0  ;save xmm0
+                cvttsd2si rax, xmm0  
                 
                 mov rdx, rax
                 add al, '0'
                 stosb
                 mov rax, rdx
                 
-                cvtsi2ss xmm1, rax
-                movss xmm0, xmm2
-                subss xmm0, xmm1
+                cvtsi2sd xmm1, rax
+                movsd xmm0, xmm2
+                subsd xmm0, xmm1
     
                 loop .next_digit
                 
@@ -540,14 +537,14 @@ X_Step          equ 16 ;xmm stack ofs
 R_ArgsPos       equ 0
 X_ArgsPos       equ  0 - 8 - X_ArgsSize
 Parsed_X_Args   dq 0
-N_X_notStk_Args     equ 8
+N_X_notStk_Args equ 8
 X_ArgsSize      equ 16 * 8 ;8 xmm regs in stack
 StartStackPos   equ R_ArgsPos + 5 * 0x08 ;R argspos + 5 specificator R args
 NullTrm         equ 0x00
 FormatSpec      equ '%'
-Precision       equ 3
-Sign_Mask       dd 0x80000000
+Precision       equ 5
+Sign_Mask       dq 0x8000000000000000
 DecNum          equ 10
-epsilon         dd 0.00005
+epsilon         dq 0.0000005
 DebugFormat:    db 0x0a, "Debug format for printf called from %s %%", 0x0a, 0
 DebugStr:       db "my_printf.s", 0

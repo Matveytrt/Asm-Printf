@@ -26,7 +26,7 @@ main:
                 ; mov rax, 1
                 ; mov rdi, Format2
                 ; mov rsi, -5
-                ; movd xmm0, [value]
+                ; movq xmm0, [value]
                 ; ; mov rdx, -112233
                 ; ; mov rcx, 'r'
                 ; call my_printf
@@ -40,19 +40,19 @@ main:
                 mov r9, 5 
                 push 9
                 sub rsp, 16
-                mov eax, [value]      ; float
-                mov [rsp], eax
+                mov rax, [value2]      ; float
+                mov [rsp], rax
                 push 8
                 push 7
                 push 6
-                movd xmm0, [value]
-                movd xmm1, [value]
-                movd xmm2, [value]
-                movd xmm3, [value]
-                movd xmm4, [value]
-                movd xmm5, [value]
-                movd xmm6, [value]
-                movd xmm7, [value]
+                movq xmm0, [value]
+                movq xmm1, [value]
+                movq xmm2, [value]
+                movq xmm3, [value]
+                movq xmm4, [value]
+                movq xmm5, [value]
+                movq xmm6, [value]
+                movq xmm7, [value]
                 call my_printf
 
                 mov rax, 0x3C      ; exit64 (rdi)
@@ -63,8 +63,9 @@ main:
 section .data
 Format:         db "Is: %% %d %d %c %x %o %s %b %f ahaha", 0x0a, 0  
 Format2:        db "%% Is: %d %f", 0x0a, 0 
-Format3:        db "Test: 1: %f %x | 2: %f %x | 3: %f %x | 4: %f %x | 5: %f %x | 6: %f %x | 7: %f %x | 8: %f %x |9: %f %x", 0
+Format3:        db 'Test: 1: %f %x | 2: %f %x | 3: %f %x | 4: %f %x | 5: %f %x | 6: %f %x | 7: %f %x | 8: %f %x |9: %f %x', 0
 Msg             db "Matuwa the beast!", 0
 MsgLen          equ $ - Msg
-value           dd 1.253
+value           dq 1.253
+value2          dq -0.52423233
 
