@@ -28,7 +28,7 @@
 %macro GET_POW2BASE 3 
         mov r13, %1 ;mask
         mov cl, %2  ;offset
-        mov bl, %3  ;spec_sym
+        mov dl, %3  ;spec_sym
         jmp .numsyst_conv
 %endmacro
 
@@ -38,13 +38,13 @@
 %endmacro
 
 %macro GET_X_ARG 1 ;!fix
-        mov rax, [rbp + r12] ;argument value
-        add r12, %1 ;elem size step
+        movdqu xmm0, [rbp + r15] ;argument value
+        add r15, %1 ;elem size step
 %endmacro
 
 %macro PUSH_ALL_XMM 0
     sub rsp, X_ArgsSize ; 8 * 16 = 128 byte
-    movdqu [rsp], xmm0
+    movdqu [rsp], xmm0 ;rbp + 8 (allign with rdi) + 128
     movdqu [rsp+16], xmm1
     movdqu [rsp+32], xmm2
     movdqu [rsp+48], xmm3
@@ -69,7 +69,9 @@
 ;==========================================================================
 global my_printf
 extern printf
+;==========================================================================
 
+;==========================================================================
 section         .text
 ;==========================================================================
 
@@ -95,8 +97,10 @@ my_printf:
                 push r15 ;callee saved
 
                 mov r12, R_ArgsPos ; start_pos of arg counter NOT CHANGE
+                mov r15, X_ArgsPos
                 mov rsi, rdi ; format str ONLY
                 mov rdi, Print_Buf ;print_buf pos
+                xor rbx, rbx ;parsed float args counter = 0
 
     .next_parse: 
                 lodsb ;[rsi] -> al
@@ -160,8 +164,19 @@ my_printf:
                 jmp .next_parse
 
         .case_f:
+
+                inc rbx
+                cmp rbx, N_X_notStk_Args
+                cmova r15, r12
+                ja .incstkpos
+            .get_float_arg:
                 GET_X_ARG X_Step
+                call ftoa
                 jmp .next_parse
+
+            .incstkpos:
+                add r12, X_Step
+                jmp .get_float_arg
 
         .case_p: 
                 jmp .case_x
@@ -217,14 +232,16 @@ my_printf:
 
             .numsyst_conv: ;converting to cur num system
                 push rcx
+                push rdx
                 mov rdx, Temp_BufSize
                 call check_buf
+                pop rdx
                 pop rcx
 
                 mov r14, rax ;save arg
                 mov al, '0'
                 stosb
-                mov al, bl
+                mov al, dl
                 stosb
                 mov rax, r14
                 call num_to_str
@@ -235,11 +252,10 @@ my_printf:
                 jmp .next_parse
 
     .exit:      
-
-                mov rdi, DebugFormat
-                mov rsi, DebugStr
-                xor rax, rax
-                call printf
+                ; mov rdi, DebugFormat
+                ; mov rsi, DebugStr
+                ; xor rax, rax
+                ; call printf
 
                 pop r15
                 pop r14
@@ -271,7 +287,10 @@ my_printf:
 ;Destroyed:     r10 - r14
 ;Expected:
 ;Comment:       during the execution of printf
-;               r12 - current stack arg position
+;               r12 - current stack R arg position NOT TOUCH!
+;               r15 - current stack X arg pos NOT TOUCH!
+;               rbx - float arg counter NOT TOUCH!
+;               rdi - print_buf addr
 ;               rsi - format str addr
 ;ToDo: float, """", \n
 ;==========================================================================
@@ -341,7 +360,7 @@ itoa:
                 push rax 
                 push rsi
 
-                mov rbx, 10 ;decimal
+                mov r13, 10 ;decimal
                 mov rsi, Temp_Buf
 
                 cmp rax, 0x00 ;set SF
@@ -355,7 +374,7 @@ itoa:
 
     .next_digit:    
                 xor rdx, rdx
-                div rbx ;rax /= 10 rdx - left
+                div r13 ;rax /= 10 rdx - left
                 add dl, '0'
                 mov [rsi], dl
                 inc rsi
@@ -385,8 +404,68 @@ itoa:
 ;       rdi - print_buf pos
 ;Exit:  rdi - cur print_buf pos
 ;Expected:
-;Destroyed: rbx, rdx, rcx
+;Destroyed: r13, rdx, rcx
 ;Comment: convert int to string
+;ToDo:
+;==========================================================================
+
+;===================================Ftoa===================================
+ftoa:  
+                mov eax, DecNum
+                cvtsi2ss xmm3, eax ;10.0
+
+
+                movd eax, xmm0
+                test eax, [Sign_Mask] ;float signmask
+                jz .positive
+
+                xorps xmm1, xmm1          ; xmm1 = 0.0
+                subss xmm1, xmm0          ; xmm1 = -xmm0
+                movss xmm0, xmm1
+                mov al, '-'
+                stosb
+    .positive:
+                movss xmm4, [epsilon]
+                addss xmm0, xmm4
+                movss xmm2, xmm0 
+                cvttss2si rax, xmm0 ; eax integer part
+
+                call itoa ;write integer part
+
+                cvtsi2ss xmm1, rax
+                movss xmm0, xmm2
+                subss xmm0, xmm1 ;kill iteger part
+                mov al, '.'
+                stosb
+
+                mov rcx, Precision
+
+    .next_digit:
+                mulss xmm0, xmm3    ;xmm0 *= 10.0
+                movss xmm2, xmm0  ;save xmm0
+                cvttss2si rax, xmm0  
+                
+                mov rdx, rax
+                add al, '0'
+                stosb
+                mov rax, rdx
+                
+                cvtsi2ss xmm1, rax
+                movss xmm0, xmm2
+                subss xmm0, xmm1
+    
+                loop .next_digit
+                
+    .exit:          
+                ret
+;===================================Ftoa===================================
+;Entry: xmm0 - value
+;       rsi - format str pos, 
+;       rdi - print_buf pos
+;Exit:  rdi - cur print_buf pos
+;Expected:
+;Destroyed:
+;Comment: convert float to string
 ;ToDo:
 ;==========================================================================
 
@@ -455,16 +534,20 @@ Print_Buf       times Print_BufSize db 0
 Temp_BufSize    equ 66 ;64 bin max size plus prefix 0x 0b 0o
 Temp_Buf        times Temp_BufSize db 0
 BaseElem        equ 98d
-Temp_Ip         db 0
 
 R_Step          equ 8 ;regs stack ofs
 X_Step          equ 16 ;xmm stack ofs
 R_ArgsPos       equ 0
-X_ArgsPos       equ 0x00
+X_ArgsPos       equ  0 - 8 - X_ArgsSize
+Parsed_X_Args   dq 0
+N_X_notStk_Args     equ 8
 X_ArgsSize      equ 16 * 8 ;8 xmm regs in stack
 StartStackPos   equ R_ArgsPos + 5 * 0x08 ;R argspos + 5 specificator R args
 NullTrm         equ 0x00
 FormatSpec      equ '%'
-
+Precision       equ 3
+Sign_Mask       dd 0x80000000
+DecNum          equ 10
+epsilon         dd 0.00005
 DebugFormat:    db 0x0a, "Debug format for printf called from %s %%", 0x0a, 0
 DebugStr:       db "my_printf.s", 0
