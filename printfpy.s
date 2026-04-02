@@ -17,12 +17,12 @@
 %macro CHECK_BUFSIZE 1
             mov rcx, rdi
             sub rcx, r14
-            cmp rcx, _PRINTBUFSIZE_
+            cmp rcx, Print_BufSize
             jb %1
             push rsi
-            lea r11, [Print_Buf]
+            lea r11, [rel Print_Buf]
             PRINT_STR r11, rcx
-            lea rdi, [Print_Buf]
+            lea rdi, [rel Print_Buf]
             pop rsi
 %endmacro
 
@@ -44,7 +44,7 @@
 %endmacro
 
 %macro PUSH_ALL_XMM 0
-    sub rsp, _X_ARGSSIZE_ ; 8 * 16 = 128 byte
+    sub rsp, X_ArgsSize ; 8 * 16 = 128 byte
     movdqu [rsp], xmm0 ;rbp + 8 (allign with rdi) + 128
     movdqu [rsp+16], xmm1
     movdqu [rsp+32], xmm2
@@ -64,13 +64,13 @@
     movdqu xmm5, [rsp+80]
     movdqu xmm6, [rsp+96]
     movdqu xmm7, [rsp+112]
-    add rsp, _X_ARGSSIZE_
+    add rsp, X_ArgsSize
 %endmacro
 
 ;==========================================================================
 global my_printf
 ;==========================================================================
-default rel
+; default rel
 extern printf
 ;==========================================================================
 section         .text
@@ -97,19 +97,19 @@ my_printf:
                 push r14
                 push r15 ;callee saved
 
-                mov r12, _R_ARGSPOS_ ; start_pos of arg counter NOT CHANGE
-                mov r15, _X_ARGSPOS_
+                mov r12, R_ArgsPos ; start_pos of arg counter NOT CHANGE
+                mov r15, X_ArgsPos
                 mov rsi, rdi ; format str ONLY
-                lea rdi, [Print_Buf] ;print_buf pos
-                lea r14, [Print_Buf] ;save pos
+                lea rdi, [rel Print_Buf] ;print_buf pos
+                lea r14, [rel Print_Buf] ;save pos
                 xor rbx, rbx ;parsed float args counter = 0
 
     .next_parse: 
                 lodsb ;[rsi] -> al
-                cmp al, _NULLTRM_               
+                cmp al, NullTrm
                 je .print_buf
 
-                cmp al, _FORMATSPEC_
+                cmp al, FormatSpec
                 je .spec
         .continue:      
                 stosb ; al -> [rdi]
@@ -119,78 +119,79 @@ my_printf:
         .print_buf:   ;syscall and write print_buf to cmd_str  
                 mov rcx, rdi
                 sub rcx, r14
-                lea r11, [Print_Buf]
+                lea r11, [rel Print_Buf]
                 PRINT_STR r11, rcx
                 jmp .exit
 
         .spec:
                 lodsb ;al - specifier
-                cmp al, _FORMATSPEC_
+                cmp al, FormatSpec
                 je .continue
+
                 movzx rax, al ;clear rax except al - ascii
     
-                mov r11, (_STARTSTKPOS_ + _X_STEP_) ;skip rbp and ip
-                cmp r12, _STARTSTKPOS_ ;rbp pos
+                mov r11, (StartStackPos + X_Step) ;skip rbp and ip
+                cmp r12, StartStackPos ;rbp pos
                 cmove r12, r11
 
-                lea r11, [.switch_table]
-                mov r8, [r11 + (rax - 'b') * 8]
-                add r8, r11
-                jmp r8 ;jump to handle specifoer
-              
+                lea r11, [rel .switch_table]
+                lea r11, [r11 + .origin]
+                jmp [r11 + (rax - 'b') * 8] ;jump to handle specifoer
+                
+.origin:
 section         .rodata
 
     .switch_table:
-                dq .case_b                         - .switch_table;   %b
-                dq .case_c                         - .switch_table;   %c
-                dq .case_d                         - .switch_table;   %d
-                times ('f' - 'd' - 1) dq .default  - .switch_table;   skip
-                dq .case_f                         - .switch_table;   %f
-                times ('o' - 'f' - 1) dq .default  - .switch_table;   skip
-                dq .case_o                         - .switch_table;   %o
-                dq .case_p                         - .switch_table;   %p
-                times ('s' - 'p' - 1) dq .default  - .switch_table;   skip
-                dq .case_s                         - .switch_table;   %b
-                times ('x' - 's' - 1) dq .default  - .switch_table;   skip 
-                dq .case_x                         - .switch_table;   %x
+                dq .case_b                         - .origin ;   %b
+                dq .case_c                         - .origin ;   %c
+                dq .case_d                         - .origin ;   %d
+                times ('f' - 'd' - 1) dq .default  - .origin ;   skip
+                dq .case_f                         - .origin ;   %f
+                times ('o' - 'f' - 1) dq .default  - .origin ;   skip
+                dq .case_o                         - .origin ;   %o
+                dq .case_p                         - .origin ;   %p
+                times ('s' - 'p' - 1) dq .default  - .origin ;   skip
+                dq .case_s                         - .origin ;   %b
+                times ('x' - 's' - 1) dq .default  - .origin ;   skip 
+                dq .case_x                         - .origin ;   %x
 
 section         .text
 
         .case_c:         
-                GET_ARG _R_STEP_   
+                GET_ARG R_Step   
                 stosb 
                 CHECK_BUFSIZE .next_parse
                 jmp .next_parse     
 
         .case_d:
-                GET_ARG _R_STEP_       
-                mov rdx, _TEMPBUFSIZE_
+                GET_ARG R_Step       
+                mov rdx, Temp_BufSize
                 call check_buf
                 call itoa ;put decimal value string in print_buf
                 jmp .next_parse
 
         .case_f:
                 inc rbx ;inc count of parsed floats
-                cmp rbx, _N_X_NOTSTKARGS_
+                cmp rbx, N_X_notStk_Args
                 cmova r15, r12
                 ja .incstkpos
             .get_float_arg:
-                mov rdx, _TEMPBUFSIZE_
-                call check_buf ;check buf overflow posibility
+                mov rdx, Temp_BufSize
+                call check_buf
 
-                GET_X_ARG _X_STEP_
-                call ftoa ;float to string
+                GET_X_ARG X_Step
+                call ftoa
                 jmp .next_parse
 
             .incstkpos:
-                add r12, _R_STEP_
+                add r12, R_Step
                 jmp .get_float_arg
 
         .case_p: 
                 jmp .case_x
 
         .case_s:        
-                GET_ARG _R_STEP_ 
+                GET_ARG R_Step 
                 push rsi ;save format_str ptr
                 push rdi ;save print_buf addr
 
@@ -200,20 +201,20 @@ section         .text
                 mov rcx, rax ;len to rcx
                 pop rdi ;print_buf
 
-                cmp rcx, _PRINTBUFSIZE_
+                cmp rcx, Print_BufSize
                 jb .skip_write_buf
 
                 push rsi
                 push rcx
                 mov rdx, rdi
                 sub rdx, r14
-                lea r11, [Print_Buf]
+                lea r11, [rel Print_Buf]
                 PRINT_STR r11, rdx ;write to cmd_str and clear print_buf
                 pop rcx
                 pop rsi
 
                 PRINT_STR rsi, rcx ;write str to cmd_str
-                lea rdi, [Print_Buf]
+                lea rdi, [rel Print_Buf]
                 jmp .end_s
 
             .skip_write_buf:
@@ -225,25 +226,25 @@ section         .text
 
 
         .case_b:
-                GET_ARG _R_STEP_ 
+                GET_ARG R_Step 
                 GET_POW2BASE 0x01, 0x01, 'b'
                 jmp .numsyst_conv
 
         .case_o:
-                GET_ARG _R_STEP_         
+                GET_ARG R_Step         
                 GET_POW2BASE 0x07, 0x03, 'o'
                 jmp .numsyst_conv
 
         .case_x:  
-                GET_ARG _R_STEP_ 
+                GET_ARG R_Step 
                 GET_POW2BASE 0x0F, 0x04, 'x'      
                 jmp .numsyst_conv
 
             .numsyst_conv: ;converting to cur num system
                 push rcx
                 push rdx
-                mov rdx, _TEMPBUFSIZE_
-                call check_buf ;check for overflow
+                mov rdx, Temp_BufSize
+                call check_buf
                 pop rdx
                 pop rcx
 
@@ -261,6 +262,11 @@ section         .text
                 jmp .next_parse
 
     .exit:      
+                ; lea rdi, [rel DebugFormat]
+                ; lea rsi, [rel DebugStr]
+                ; xor rax, rax
+                ; call printf
+
                 pop r15
                 pop r14
                 pop r13 
@@ -276,16 +282,8 @@ section         .text
                 pop rcx
                 pop r8
                 pop r9
+
                 pop rbp
-
-                pop r10 ;get ip
-                mov [Temp_Ip], r10
-
-                call printf wrt ..plt
-
-                mov r10, [Temp_Ip]
-                push r10
-
                 ret
 ;==========================================================================
 ;Entry:         rdi - format str addr
@@ -305,7 +303,7 @@ section         .text
 ;               rbx - float arg counter NOT TOUCH!
 ;               rdi - print_buf addr
 ;               rsi - format str addr
-;ToDo:
+;ToDo: float, """", \n
 ;==========================================================================
 
 ;===================================num_to_str=============================
@@ -313,10 +311,10 @@ num_to_str:
                 push rax 
                 push rsi
 
-                lea r10, [Temp_Buf]
+                lea r10, [rel Temp_Buf]
                 mov rdx, rax ;save rax
                 mov r11, rdi ;save print_buf pos in r11
-                lea rdi, [Temp_Buf]
+                lea rdi, [rel Temp_Buf]
 
     .next_digit: 
                 mov rax, rdx ;save in new rax
@@ -375,9 +373,9 @@ itoa:
                 push rsi
                 push r14
 
-                lea r10, [Temp_Buf]
+                lea r10, [rel Temp_Buf]
                 mov r13, 10 ;decimal
-                lea rsi, [Temp_Buf]
+                lea rsi, [rel Temp_Buf]
 
                 cmp rax, 0x00 ;set SF
                 jns .next_digit
@@ -431,21 +429,27 @@ ftoa:
                 push rsi
 
                 movq rax, xmm0
-                mov rdx, _PLUSINF_
-                cmp rax, rdx
-                je .inf
-                mov rdx, _MINUSINF_
-                cmp rax, rdx
-                je .inf
+                mov rdx, PlusInf
+                test rax, rdx
+                jnz .inf
+                mov rdx, MinusInf
+                test rax, rdx
+                jnz .inf
                 
-                ucomisd xmm0, xmm0
-                jp .nan
+                movq rax, xmm0
+                mov rdx, S_Nan
+                test rax, rdx
+                jnz .nan
+                mov rdx, Q_Nan
+                test rax, rdx
+                jnz .nan
 
-                mov rax, _DECBASE_              
+                mov rax, DecNum
                 cvtsi2sd xmm3, rax ;10.0
 
+
                 movq rax, xmm0
-                mov rdx, _SIGN_MASK_               
+                mov rdx, Sign_Mask
                 test rax, rdx ;double signmask
                 jz .positive
 
@@ -454,8 +458,8 @@ ftoa:
                 movsd xmm0, xmm1
                 mov al, '-'
                 stosb
-    .positive: 
-                movsd xmm4, [epsilon]
+    .positive:
+                movsd xmm4, [rel epsilon]
                 addsd xmm0, xmm4
                 movsd xmm2, xmm0 
                 cvttsd2si rax, xmm0 ; eax integer part
@@ -468,14 +472,15 @@ ftoa:
                 mov al, '.'
                 stosb
 
-                mov rcx, _PRECISION_   
-    .next_digit:  
-                mulsd xmm0, xmm3      ;xmm0 *= 10.0
-                movsd xmm2, xmm0  ;s  ave xmm0
-                cvttsd2si rax, xmm0    
-                  
-                mov rdx, rax  
-                add al, '0'  
+                mov rcx, Precision
+
+    .next_digit:
+                mulsd xmm0, xmm3    ;xmm0 *= 10.0
+                movsd xmm2, xmm0  ;save xmm0
+                cvttsd2si rax, xmm0  
+                
+                mov rdx, rax
+                add al, '0'
                 stosb
                 mov rax, rdx
                 
@@ -487,14 +492,14 @@ ftoa:
                 jmp .exit
 
     .inf:
-                lea rsi, [Inf_Str]
-                mov rcx, _INFSTRLEN_          
-                rep movsb
+                lea rsi, [rel Inf_Str]
+                mov rcx, Inf_StrLen
+                PRINT_STR rsi, rcx
                 jmp .exit
     .nan:
-                lea rsi, [Nan_Str]
-                mov rcx, _NANSTRLEN_
-                rep movsb
+                lea rsi, [rel Nan_Str]
+                mov rcx, Nan_StrLen
+                PRINT_STR rsi, rcx
                 
     .exit:
                 pop rsi          
@@ -543,15 +548,15 @@ check_buf:
                 sub rcx, r14 ;num of writen symblols
 
                 add rdx, rcx ;num of symbols that's should be writen in buf
-                cmp rdx, _PRINTBUFSIZE_
+                cmp rdx, Print_BufSize
                 jb .exit
 
                 push rsi ;save format_str ptr
                 push rax ;save cur writing_arg
 
-                lea r11, [Print_Buf]
+                lea r11, [rel Print_Buf]
                 PRINT_STR r11, rcx
-                lea rdi, [Print_Buf]
+                lea rdi, [rel Print_Buf]
 
                 pop rax
                 pop rsi
@@ -571,33 +576,35 @@ check_buf:
 
 ;==============================Data========================================
 section         .data  
-_PRINTBUFSIZE_   equ 1024
-_TEMPBUFSIZE_    equ 66 ;64 bin max size plus prefix 0x 0b 0o
+Print_BufSize   equ 1024
+Print_Buf       times Print_BufSize db 0
+Temp_BufSize    equ 66 ;64 bin max size plus prefix 0x 0b 0o
+Temp_Buf        times Temp_BufSize db 0
 
-Print_Buf        times _PRINTBUFSIZE_ db 0
-Temp_Buf         times _TEMPBUFSIZE_ db 0
-Temp_Ip          dq 0
-epsilon          dq 0.0000005
-Inf_Str          db "Inf", 0
-Nan_Str          db "Nan", 0
+R_Step          equ 8 ;regs stack ofs
+X_Step          equ 16 ;xmm stack ofs
+R_ArgsPos       equ 0
+X_ArgsPos       equ  0 - 8 - X_ArgsSize
+Parsed_X_Args   dq 0
+N_X_notStk_Args equ 8
+X_ArgsSize      equ 16 * 8 ;8 xmm regs in stack
+StartStackPos   equ R_ArgsPos + 5 * 0x08 ;R argspos + 5 specificator R args
+NullTrm         equ 0x00
+FormatSpec      equ '%'
+Precision       equ 5
+Sign_Mask       equ 0x8000000000000000
+DecNum          equ 10
+epsilon         dq 0.0000005
+DebugFormat     db 0x0a, "Debug format for printf called from %s %%", 0x0a, 0
+DebugStr        db "my_printf.s", 0
 
-_R_STEP_         equ 8 ;regs stack ofs
-_X_STEP_         equ 16 ;xmm stack ofs
-_R_ARGSPOS_      equ 0
-_X_ARGSPOS_      equ  0 - 8 - _X_ARGSSIZE_
-_N_X_NOTSTKARGS_ equ 8
-_X_ARGSSIZE_     equ 16 * 8 ;8 xmm regs in stack
-_STARTSTKPOS_    equ _R_ARGSPOS_ + 5 * 0x08 ;R argspos + 5 specificator R args
-_NULLTRM_        equ 0x00
-_FORMATSPEC_     equ '%'
-_PRECISION_      equ 5
-_SIGN_MASK_      equ 0x8000000000000000
-_DECBASE_        equ 10
-_PLUSINF_        equ 0x7FF0000000000000
-_MINUSINF_       equ 0xFFF0000000000000
-_Q_NAN_          equ 0x7FF8000000000000
-_S_NAN_          equ 0x7FF0000000000001
-_INFSTRLEN_      equ 3
-_NANSTRLEN_      equ 3
+PlusInf         equ 0x7FF0000000000000
+MinusInf        equ 0xFFF0000000000000
+Q_Nan           equ 0x7FF8000000000000
+S_Nan           equ 0x7FF0000000000001
+Inf_Str         db "Inf", 0
+Inf_StrLen      equ $ - Inf_Str
+Nan_StrLen      equ $ - Nan_Str
+Nan_Str         db "Nan", 0
 
 section .note.GNU-stack noalloc noexec nowrite progbits
